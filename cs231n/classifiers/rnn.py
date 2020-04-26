@@ -154,26 +154,27 @@ class CaptioningRNN(object):
             h, c = rnn_forward(embed, h0, Wx, Wh, b)
             temp1, c1 = temporal_affine_forward(h, W_vocab, b_vocab)
             loss, dtemp1 = temporal_softmax_loss(temp1, captions_out, mask, verbose=False)
-            
             dh, dW_vocab, db_vocab = temporal_affine_backward(dtemp1, c1)
-            grads['W_vocab'] = dW_vocab
-            grads['b_vocab'] = db_vocab
-
             dembed, dh0, dWx, dWh, db = rnn_backward(dh, c)
-            grads['Wx'] = dWx
-            grads['Wh'] = dWh
-            grads['b'] = db
-            
             _, dW_proj, db_proj = affine_backward(dh0, c0)
-            grads['W_proj'] = dW_proj
-            grads['b_proj'] = db_proj
-
             dW_embed = word_embedding_backward(dembed, c_embed)
-            grads['W_embed'] = dW_embed
-
         else:
-            pass
+            h, c = lstm_forward(embed, h0, Wx, Wh, b)
+            temp1, c1 = temporal_affine_forward(h, W_vocab, b_vocab)
+            loss, dtemp1 = temporal_softmax_loss(temp1, captions_out, mask, verbose=False)
+            dh, dW_vocab, db_vocab = temporal_affine_backward(dtemp1, c1)
+            dembed, dh0, dWx, dWh, db = lstm_backward(dh, c)
+            _, dW_proj, db_proj = affine_backward(dh0, c0)
+            dW_embed = word_embedding_backward(dembed, c_embed)
 
+        grads['W_vocab'] = dW_vocab
+        grads['b_vocab'] = db_vocab
+        grads['Wx'] = dWx
+        grads['Wh'] = dWh
+        grads['b'] = db
+        grads['W_proj'] = dW_proj
+        grads['b_proj'] = db_proj
+        grads['W_embed'] = dW_embed
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -261,7 +262,13 @@ class CaptioningRNN(object):
                 # print(word_selected.shape)
                 captions[:,i] = word_selected
         else:
-            pass
+            H = Wh.shape[0]
+            cell = np.zeros((N,H))
+            for i in range(max_length):
+                hidden, cell, _ = lstm_step_forward(word_vec, hidden, cell, Wx, Wh, b)
+                intermediate, _ = affine_forward(hidden, W_vocab, b_vocab)
+                word_selected = np.amax(intermediate,axis=1)
+                captions[:,i] = word_selected
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
