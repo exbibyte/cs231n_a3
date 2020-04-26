@@ -142,7 +142,37 @@ class CaptioningRNN(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # h0 = features.dot(W_proj) + b_proj[np.newaxis,...]
+        h0, c0 = affine_forward(features, W_proj, b_proj)
+        N = features.shape[0]
+        H = W_proj.shape[1]
+        assert(h0.shape==(N,H))
+
+        embed, c_embed = word_embedding_forward(captions_in, W_embed)
+        
+        if self.cell_type == 'rnn':
+            h, c = rnn_forward(embed, h0, Wx, Wh, b)
+            temp1, c1 = temporal_affine_forward(h, W_vocab, b_vocab)
+            loss, dtemp1 = temporal_softmax_loss(temp1, captions_out, mask, verbose=False)
+            
+            dh, dW_vocab, db_vocab = temporal_affine_backward(dtemp1, c1)
+            grads['W_vocab'] = dW_vocab
+            grads['b_vocab'] = db_vocab
+
+            dembed, dh0, dWx, dWh, db = rnn_backward(dh, c)
+            grads['Wx'] = dWx
+            grads['Wh'] = dWh
+            grads['b'] = db
+            
+            _, dW_proj, db_proj = affine_backward(dh0, c0)
+            grads['W_proj'] = dW_proj
+            grads['b_proj'] = db_proj
+
+            dW_embed = word_embedding_backward(dembed, c_embed)
+            grads['W_embed'] = dW_embed
+
+        else:
+            pass
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -211,7 +241,27 @@ class CaptioningRNN(object):
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        hidden, _ = affine_forward(features, W_proj, b_proj)
+        assert(hidden.shape==(N,W_proj.shape[1]))
+        # print(hidden.shape)
+        
+        word_idx = np.ones((N,1), dtype=int) * self._start        
+        word_vec, _ = word_embedding_forward(word_idx, W_embed)
+        assert(word_vec.shape==(N,1,W_embed.shape[1]))
+        word_vec = np.squeeze(word_vec, axis=1)
+        # print(word_vec.shape)
+        
+        if self.cell_type == 'rnn':
+            for i in range(max_length):
+                hidden, _ = rnn_step_forward(word_vec, hidden, Wx, Wh, b)
+                # print(hidden.shape)
+                intermediate, _ = affine_forward(hidden, W_vocab, b_vocab)
+                # print(intermediate.shape)
+                word_selected = np.amax(intermediate,axis=1)
+                # print(word_selected.shape)
+                captions[:,i] = word_selected
+        else:
+            pass
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

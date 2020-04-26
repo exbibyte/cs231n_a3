@@ -36,8 +36,11 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    intermediate = prev_h.dot(Wh)+b[np.newaxis,:]+x.dot(Wx)
+    next_h = np.tanh(intermediate)
 
+    cache = (x, prev_h, Wx, Wh, b, intermediate)
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -69,7 +72,14 @@ def rnn_step_backward(dnext_h, cache):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    (x, prev_h, Wx, Wh, b, intermediate) = cache
+
+    temp1 = (1-np.power(np.tanh(intermediate), 2)) * dnext_h #shape:(N,H)
+    dx = temp1.dot(Wx.T)
+    dWx = (x.T).dot(temp1)
+    dprev_h = temp1.dot(Wh.T)
+    dWh = (prev_h.T).dot(temp1)
+    db = np.sum(temp1, axis=0)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -104,8 +114,15 @@ def rnn_forward(x, h0, Wx, Wh, b):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
-
+    (N,T,D) = x.shape
+    H = h0.shape[1]
+    h = np.zeros((N,T,H))
+    cache = []
+    next_h = h0
+    for i in range(0,T):
+        next_h, c = rnn_step_forward(x[:,i,:], next_h, Wx, Wh, b)
+        h[:,i,:] = next_h
+        cache.append(c)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -139,9 +156,26 @@ def rnn_backward(dh, cache):
     # defined above. You can use a for loop to help compute the backward pass.   #
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    (N,T,H) = dh.shape
+    (x,*_) = cache[0]
+    D = x.shape[1]
+    db = np.zeros((H,))
+    dWh = np.zeros((H,H))
+    dWx = np.zeros((D,H))
+    dh0 = np.zeros((N,H))
+    dx = np.zeros((N,T,D))
+    
+    T = dh.shape[1]
+    dh_prev = np.zeros((N,H))
+    
+    for i in reversed(range(T)):
+        _dx, dh_prev, _dWx, _dWh, _db = rnn_step_backward(dh[:,i,:]+dh_prev, cache[i])
+        db += _db
+        dWh += _dWh
+        dWx += _dWx
+        dx[:,i,:] = _dx
 
-    pass
-
+    dh0 = dh_prev
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -172,7 +206,9 @@ def word_embedding_forward(x, W):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    out = W[x,:]
+
+    cache = (W,x)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -205,7 +241,20 @@ def word_embedding_backward(dout, cache):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    (N,T,D) = dout.shape
+    
+    (W,x) = cache
+    
+    (V,_) = W.shape
+
+    dW = np.zeros((V,D))
+
+    np.add.at(dW, x, dout)
+    # equivalent
+    # for i in range(N):
+    #     for j in range(T):
+    #         dW[x[i,j],:] += dout[i,j,:]
+
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -454,9 +503,13 @@ def temporal_softmax_loss(x, y, mask, verbose=False):
     y_flat = y.reshape(N * T)
     mask_flat = mask.reshape(N * T)
 
+    #avoid numerical issues by subtracitng max val
     probs = np.exp(x_flat - np.max(x_flat, axis=1, keepdims=True))
+    #normalize
     probs /= np.sum(probs, axis=1, keepdims=True)
+    #cross entropy loss, with masking
     loss = -np.sum(mask_flat * np.log(probs[np.arange(N * T), y_flat])) / N
+    #use chain rule to compute derivative to loss wrt. input x
     dx_flat = probs.copy()
     dx_flat[np.arange(N * T), y_flat] -= 1
     dx_flat /= N
